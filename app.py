@@ -116,8 +116,8 @@ def open_book(book_id: int):
     book = get_book(DB_PATH, book_id)
     if not book:
         raise HTTPException(404, "Not found")
-    path = BOOKS_DIR / book["filename"]
-    if not path.exists():
+    path = (BOOKS_DIR / book["filename"]).resolve()
+    if BOOKS_DIR.resolve() not in path.parents or not path.exists():
         raise HTTPException(404, f"File not on disk: {book['filename']}")
     subprocess.Popen(["open", str(path)])
     return {"ok": True}

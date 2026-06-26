@@ -323,7 +323,7 @@
   }
   function renderTrust() {
     document.getElementById('trust').textContent = st.query
-      ? `${st.total} of 3,937 match` : `3,937 books · all accounted for`;
+      ? `${st.total} match` : `${st.total || '…'} books · all accounted for`;
   }
 
   function pivot(col) {
