@@ -9,7 +9,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import BOOKS_DIR, DB_PATH
-from database import get_books, get_book, update_book, get_stats, init_db
+from database import (get_books, get_book, update_book, get_stats, init_db,
+                     facet_groups, query_books)
 from scanner import scan_folder
 
 
@@ -46,6 +47,36 @@ def list_books(
             "pages": max(1, -(-total // per_page))}
 
 
+# ── faceted navigation (column view) ──────────────────────────────────────────
+
+def _filters(format, author, initial, year, status, category):
+    return {k: v for k, v in {
+        "format": format, "author": author, "initial": initial,
+        "year": year, "status": status, "category": category,
+    }.items() if v}
+
+
+@app.get("/api/facets")
+def facets(
+    facet: str = "format", q: str = "",
+    format: str = "", author: str = "", initial: str = "",
+    year: str = "", status: str = "", category: str = "",
+):
+    filters = _filters(format, author, initial, year, status, category)
+    return {"facet": facet, "groups": facet_groups(DB_PATH, facet, filters, q)}
+
+
+@app.get("/api/column-books")
+def column_books(
+    q: str = "", sort: str = "title", page: int = 1, per_page: int = 300,
+    format: str = "", author: str = "", initial: str = "",
+    year: str = "", status: str = "", category: str = "",
+):
+    filters = _filters(format, author, initial, year, status, category)
+    books, total = query_books(DB_PATH, filters, q, sort, page, per_page)
+    return {"books": books, "total": total}
+
+
 @app.get("/api/books/{book_id}")
 def book_detail(book_id: int):
     book = get_book(DB_PATH, book_id)
@@ -66,13 +97,27 @@ async def update_book_detail(book_id: int, request: Request):
 
 # ── actions ───────────────────────────────────────────────────────────────────
 
+@app.get("/api/file/{book_id}")
+def serve_file(book_id: int):
+    """Serve the raw book file inline (used by the in-pane PDF preview)."""
+    book = get_book(DB_PATH, book_id)
+    if not book:
+        raise HTTPException(404, "Not found")
+    path = (BOOKS_DIR / book["filename"]).resolve()
+    # confine to BOOKS_DIR
+    if BOOKS_DIR.resolve() not in path.parents or not path.exists():
+        raise HTTPException(404, f"File not on disk: {book['filename']}")
+    media = "application/pdf" if book["extension"] == "pdf" else "application/octet-stream"
+    return FileResponse(path, media_type=media, headers={"Content-Disposition": "inline"})
+
+
 @app.post("/api/open/{book_id}")
 def open_book(book_id: int):
     book = get_book(DB_PATH, book_id)
     if not book:
         raise HTTPException(404, "Not found")
-    path = BOOKS_DIR / book["filename"]
-    if not path.exists():
+    path = (BOOKS_DIR / book["filename"]).resolve()
+    if BOOKS_DIR.resolve() not in path.parents or not path.exists():
         raise HTTPException(404, f"File not on disk: {book['filename']}")
     subprocess.Popen(["open", str(path)])
     return {"ok": True}

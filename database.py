@@ -31,24 +31,31 @@ def init_db(db_path: Path):
                                       CHECK(read_status IN ('unread','reading','read')),
                 rating        INTEGER NOT NULL DEFAULT 0
                                       CHECK(rating BETWEEN 0 AND 5),
-                notes         TEXT    NOT NULL DEFAULT ''
+                notes         TEXT    NOT NULL DEFAULT '',
+                origin_paths  TEXT    NOT NULL DEFAULT '[]'
             );
 
             CREATE INDEX IF NOT EXISTS idx_extension   ON books(extension);
             CREATE INDEX IF NOT EXISTS idx_read_status ON books(read_status);
             CREATE INDEX IF NOT EXISTS idx_title       ON books(title COLLATE NOCASE);
         """)
+        # migrate older DBs that predate origin_paths
+        try:
+            c.execute("ALTER TABLE books ADD COLUMN origin_paths TEXT NOT NULL DEFAULT '[]'")
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _row_to_dict(row) -> dict:
     d = dict(row)
-    for f in ("authors", "tags"):
-        try:
-            d[f] = json.loads(d[f])
-        except Exception:
-            d[f] = []
+    for f in ("authors", "tags", "origin_paths"):
+        if f in d:
+            try:
+                d[f] = json.loads(d[f])
+            except Exception:
+                d[f] = []
     return d
 
 
@@ -95,6 +102,71 @@ def get_book(db_path: Path, book_id: int):
     with _conn(db_path) as c:
         row = c.execute("SELECT * FROM books WHERE id=?", (book_id,)).fetchone()
     return _row_to_dict(row) if row else None
+
+
+# ── faceted navigation (column view) ─────────────────────────────────────────
+# SQL expression per facet. Add 'topic'/'tags' here once enrichment populates them.
+FACET_SQL = {
+    "format":  "extension",
+    "author":  "COALESCE(NULLIF(json_extract(authors,'$[0]'),''),'Unknown')",
+    "initial": "UPPER(SUBSTR(title,1,1))",
+    "year":    "SUBSTR(modified_date,1,4)",
+    "status":  "read_status",
+    "category": "COALESCE(NULLIF(category,''),'Uncategorized')",
+}
+
+
+def _facet_expr(facet: str) -> str:
+    return FACET_SQL.get(facet, FACET_SQL["format"])
+
+
+def _facet_where(filters: dict, q: str = ""):
+    """Build a WHERE clause from {facet: value} filters + a search query."""
+    where, params = ["1=1"], []
+    for facet, value in (filters or {}).items():
+        if facet in FACET_SQL and value not in (None, ""):
+            where.append(f"{_facet_expr(facet)} = ?")
+            params.append(value)
+    if q:
+        where.append("(title LIKE ? OR authors LIKE ? OR tags LIKE ?)")
+        like = f"%{q}%"
+        params += [like, like, like]
+    return " AND ".join(where), params
+
+
+def facet_groups(db_path: Path, facet: str, filters: dict = None, q: str = ""):
+    """Return [{value, count}] grouping the filtered set by `facet`, count desc."""
+    expr = _facet_expr(facet)
+    where, params = _facet_where(filters, q)
+    # ordinal facets sort by their value; everything else by count desc
+    order = {
+        "year":    "value DESC",                       # newest first
+        "initial": "value COLLATE NOCASE ASC",         # A → Z
+    }.get(facet, "n DESC, value COLLATE NOCASE ASC")
+    sql = (f"SELECT {expr} AS value, COUNT(*) AS n FROM books "
+           f"WHERE {where} GROUP BY value ORDER BY {order}")
+    with _conn(db_path) as c:
+        rows = c.execute(sql, params).fetchall()
+    return [{"value": r["value"], "count": r["n"]} for r in rows]
+
+
+def query_books(db_path: Path, filters: dict = None, q: str = "",
+                sort: str = "title", page: int = 1, per_page: int = 200):
+    """List books matching {facet: value} filters + search, paginated."""
+    offset = (page - 1) * per_page
+    where, params = _facet_where(filters, q)
+    order = {
+        "title":      "title COLLATE NOCASE ASC",
+        "author":     "authors COLLATE NOCASE ASC",
+        "date_added": "added_date DESC",
+        "size":       "size_bytes DESC",
+    }.get(sort, "title COLLATE NOCASE ASC")
+    base = f"FROM books WHERE {where}"
+    with _conn(db_path) as c:
+        total = c.execute(f"SELECT COUNT(*) {base}", params).fetchone()[0]
+        rows = c.execute(f"SELECT * {base} ORDER BY {order} LIMIT ? OFFSET ?",
+                         params + [per_page, offset]).fetchall()
+    return [_row_to_dict(r) for r in rows], total
 
 
 def upsert_book(db_path: Path, data: dict):

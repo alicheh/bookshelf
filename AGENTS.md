@@ -1,5 +1,11 @@
 # BookShelf — Agent Context
 
+## Design system
+Always read `DESIGN.md` before making any visual or UI decision (layout, fonts, color,
+spacing, motion). The interactive UI reference is `.context/design/preview.html`.
+BookShelf is the **books connector for Daftar** (`~/DevProjects/daftar`) — keep the two
+a coherent family.
+
 ## What this app is
 Personal book library web app. ~3,937 books consolidated from scattered Mac locations
 (Downloads, Dropbox, iCloud, Google Drive, DevProjects) into a single flat folder.
@@ -32,13 +38,15 @@ To use a different books folder: `BOOKS_DIR=/path/to/books ./run.sh`
 - `scanner.py` — scan ~/Books/, parse Author-Title filenames, upsert into DB
 - `consolidate.py` — one-time migration script (already run, see below)
 - `app.py` — FastAPI backend
-- `static/index.html` — full frontend (Tailwind CDN + Alpine.js CDN, no build step)
+- `static/index.html` — full frontend (plain HTML/CSS/JS, no build step)
+- `static/legacy-grid.html` — old Tailwind CDN + Alpine.js CDN grid UI, kept as reference
 
 ## Database schema
 ```
 books: id, filename, title, authors (JSON), extension, size_bytes,
        modified_date, added_date, source_path, tags (JSON),
-       category, read_status (unread/reading/read), rating (0-5), notes
+       category, read_status (unread/reading/read), rating (0-5), notes,
+       origin_paths (JSON)
 ```
 
 ## Consolidation — already done, originals untouched
@@ -66,12 +74,11 @@ delete once the ~/Books/ copy is confirmed good.
 Never delete iCloud-only copies until you've confirmed the local copy works.
 
 ## Known issues / TODO
-- **Alpine.js scope bug:** in `static/index.html`, `detailPanel.saveBook()` calls
-  `bookshelf()` as a function which creates a new object instead of accessing the
-  running instance — saving metadata doesn't update the card in the grid. Needs
-  refactoring into a single Alpine component or using `$root`.
+- The old Tailwind/Alpine grid UI lives at `static/legacy-grid.html`; the current
+  app is the no-build column-view UI in `static/index.html`.
 - No cover images yet — plan is Open Library Covers API:
   `https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg`
 - No bulk-edit (tagging/categorizing multiple books at once)
 - Title parsing is imperfect for numeric/arxiv filenames (e.g. `2501.12948v1.pdf`)
-- No keyboard navigation
+- Configurable column count is captured in `ROADMAP.md`; current search mode
+  collapses to one result column.

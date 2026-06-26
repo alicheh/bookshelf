@@ -1,519 +1,423 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BookShelf</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <style>
-    [x-cloak] { display: none !important; }
-    .book-card:hover .card-title { color: #4f46e5; }
-    .star { cursor: pointer; transition: color .1s; }
-    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-    /* smooth panel slide */
-    .panel-enter { transform: translateX(100%); }
-    .panel-enter-active { transition: transform .2s ease-out; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BookShelf</title>
+<style>
+  /* See DESIGN.md. Fonts: system (skim-fast, Finder-native, renders Persian). */
+  :root {
+    --sans: system-ui, -apple-system, "Segoe UI", "SF Pro Text", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Menlo", monospace;
+    --row-h: 30px;
+    --bg:#F7F4EE; --panel:#fff; --rail:#EFEAE0; --border:#E3DCCE;
+    --text:#1C1A17; --muted:#6E665A; --faint:#A2988A;
+    --accent:#C8862B; --accent-soft:#F2E2C2; --accent-ink:#4A2F00; --keep:#5FA463;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  header { display: flex; align-items: center; gap: 14px; padding: 9px 14px; background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .wordmark { font-weight: 700; font-size: 16px; letter-spacing: -.02em; }
+  .wordmark .b { color: var(--accent); }
+  .wordmark .sub { color: var(--faint); font-weight: 400; font-size: 11px; margin-left: 6px; }
+  .search { flex: 1; max-width: 560px; display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; }
+  .search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search .ic { color: var(--muted); font-size: 12px; }
+  .search input { border: 0; background: transparent; outline: none; color: var(--text); font-size: 13px; flex: 1; font-family: inherit; }
+  .search .kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+  .trust { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px; white-space: nowrap; }
+  .trust .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--keep); }
+  .gear { cursor: pointer; border: 1px solid var(--border); background: var(--bg); color: var(--muted); border-radius: 7px; padding: 6px 9px; font-size: 13px; font-family: inherit; }
+  .gear:hover { color: var(--text); }
+
+  .browser { flex: 1; display: flex; overflow: hidden; }
+  .rail { width: 184px; flex-shrink: 0; background: var(--rail); border-right: 1px solid var(--border); padding: 8px 7px; overflow-y: auto; }
+  .rail .grp { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 11px 7px 4px; }
+  .rail .item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; color: var(--text); }
+  .rail .item .ic { width: 15px; text-align: center; color: var(--muted); font-size: 12px; }
+  .rail .item .lbl { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rail .item .ct { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .rail .item:hover { background: var(--accent-soft); }
+  .rail .item.active { background: var(--accent); color: #fff; }
+  .rail .item.active .ic, .rail .item.active .ct { color: rgba(255,255,255,.85); }
+  .rail .item.disabled { opacity: .5; cursor: default; }
+  .rail .item.disabled:hover { background: transparent; }
+
+  .col { flex: 0 0 auto; width: 210px; min-width: 90px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); }
+  .col.books { flex: 1 1 0; width: auto; min-width: 160px; }
+  .col.hidden { display: none; }
+  /* drag handle to resize the panel on its left */
+  .resizer { flex: 0 0 5px; cursor: col-resize; background: transparent; margin-left: -3px; z-index: 5; }
+  .resizer:hover, .resizer.dragging { background: var(--accent-soft); }
+  .resizer.hidden { display: none; }
+  .col-head { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel); font-family: var(--mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); user-select: none; }
+  .col-head.pivotable { cursor: pointer; }
+  .col-head.pivotable:hover { color: var(--accent); }
+  .col-head .pivot { color: var(--faint); }
+  .col.focused .col-head { color: var(--accent); border-bottom-color: var(--accent); }
+  .col-body { flex: 1; overflow-y: auto; padding: 3px 0; }
+
+  .row { height: var(--row-h); display: flex; align-items: center; gap: 8px; padding: 0 9px 0 11px; cursor: pointer; white-space: nowrap; line-height: var(--row-h); }
+  .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .row .ct { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .row .chev { color: var(--faint); font-size: 11px; width: 8px; }
+  .row .ext { font-family: var(--mono); font-size: 9px; font-weight: 500; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+  .row:hover { background: var(--accent-soft); }
+  .row.sel { background: var(--accent-soft); color: var(--accent-ink); }
+  .row.sel .ct, .row.sel .chev { color: var(--accent-ink); }
+  .col.focused .row.sel { background: var(--accent); color: #fff; }
+  .col.focused .row.sel .ct, .col.focused .row.sel .chev { color: rgba(255,255,255,.8); }
+  .col.focused .row.sel .ext { background: rgba(255,255,255,.22); color: #fff; border-color: transparent; }
+
+  .preview { width: 340px; flex: 0 0 auto; min-width: 220px; background: var(--panel); padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+  .pdfview { width: 100%; height: 300px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+  .noview { width: 100%; height: 110px; border: 1px dashed var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 12px; font-family: var(--mono); }
+  .origin { border-top: 1px solid var(--border); padding-top: 12px; }
+  .origin .ohdr { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); display: flex; justify-content: space-between; margin-bottom: 7px; }
+  .origin .badge { color: var(--accent-ink); background: var(--accent-soft); border-radius: 999px; padding: 0 7px; }
+  .origin .opath { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; padding: 4px 0; border-bottom: 1px solid var(--border); line-height: 1.4; }
+  .origin .opath:last-child { border-bottom: 0; }
+  .preview h1 { font-weight: 700; font-size: 18px; line-height: 1.2; letter-spacing: -.015em; word-break: break-word; }
+  .preview .author { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .meta { border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .meta .pair { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); font-size: 11px; }
+  .meta .pair .k { color: var(--faint); } .meta .pair .v { text-align: right; word-break: break-word; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag { font-size: 11px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 999px; padding: 2px 9px; }
+  .pv-actions { display: flex; gap: 8px; margin-top: 2px; }
+  .btn { flex: 1; text-align: center; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 500; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .empty { color: var(--faint); font-size: 12px; padding: 18px; text-align: center; }
+
+  .palbar { flex-shrink: 0; display: none; align-items: center; gap: 8px; padding: 7px 14px; background: var(--panel); border-top: 1px solid var(--border); overflow-x: auto; }
+  .palbar.open { display: flex; }
+  .palbar .lbl { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin-right: 2px; }
+  .swatch { display: flex; align-items: center; gap: 7px; cursor: pointer; border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px 4px 5px; background: transparent; font-family: var(--sans); font-size: 12px; color: var(--text); white-space: nowrap; }
+  .swatch:hover { border-color: var(--accent); }
+  .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .swatch .chip { width: 26px; height: 18px; border-radius: 5px; border: 1px solid rgba(0,0,0,.12); position: relative; }
+  .swatch .chip i { position: absolute; right: 3px; bottom: 3px; width: 8px; height: 8px; border-radius: 50%; }
+
+  footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 6px 14px; background: var(--bg); border-top: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  footer .crumb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  footer .crumb .sep { color: var(--faint); padding: 0 6px; }
+  footer .crumb .leaf { color: var(--accent); }
+  .hint { color: var(--faint); flex-shrink: 0; }
+  .hint b { color: var(--muted); font-weight: 600; }
+  .toast { position: fixed; bottom: 56px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--panel); font-size: 12px; padding: 8px 16px; border-radius: 999px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
 </head>
-<body class="bg-gray-50 text-gray-800 min-h-screen" x-data="bookshelf()" x-init="init()">
+<body>
 
-  <!-- ── Header ── -->
-  <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-20">
-    <div class="max-w-screen-xl mx-auto px-4 py-3 flex items-center gap-3">
-      <span class="text-2xl font-bold tracking-tight mr-2">📚 BookShelf</span>
-
-      <!-- search -->
-      <input
-        type="search"
-        placeholder="Search title, author, tags…"
-        class="flex-1 rounded-lg px-4 py-2 text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        x-model.debounce.400ms="q"
-        @input="page=1; load()"
-      />
-
-      <!-- stats pill -->
-      <button @click="showStats=!showStats"
-        class="text-sm bg-indigo-600 hover:bg-indigo-500 rounded-full px-3 py-1 whitespace-nowrap">
-        <span x-text="stats.total ?? '…'"></span> books
-      </button>
-
-      <!-- rescan -->
-      <button @click="rescan()"
-        class="text-sm bg-indigo-600 hover:bg-indigo-500 rounded-full px-3 py-1">
-        ↻ Rescan
-      </button>
-    </div>
+  <header>
+    <div class="wordmark"><span class="b">Book</span>Shelf<span class="sub">a Daftar connector · books</span></div>
+    <label class="search">
+      <span class="ic">⌕</span>
+      <input id="q" placeholder="Search title or author…  folders rebuild from your query" />
+      <span class="kbd">⌘K</span>
+    </label>
+    <div class="trust"><span class="dot"></span><span id="trust">…</span></div>
+    <button class="gear" onclick="document.getElementById('palbar').classList.toggle('open')" title="Theme">⚙</button>
   </header>
 
-  <!-- ── Filters bar ── -->
-  <div class="bg-white border-b shadow-sm sticky top-[56px] z-10">
-    <div class="max-w-screen-xl mx-auto px-4 py-2 flex flex-wrap items-center gap-3 text-sm">
-
-      <!-- format tabs -->
-      <div class="flex gap-1">
-        <template x-for="f in ['all','pdf','epub','mobi','azw3','djvu']" :key="f">
-          <button
-            @click="fmt = f==='all' ? '' : f; page=1; load()"
-            :class="(fmt==='' && f==='all') || fmt===f
-              ? 'bg-indigo-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'"
-            class="rounded-full px-3 py-1 capitalize font-medium transition"
-            x-text="f"></button>
-        </template>
-      </div>
-
-      <div class="h-5 border-l border-gray-200"></div>
-
-      <!-- status filter -->
-      <select x-model="statusFilter" @change="page=1; load()"
-        class="border rounded-lg px-2 py-1 text-sm bg-white">
-        <option value="">All status</option>
-        <option value="unread">Unread</option>
-        <option value="reading">Reading</option>
-        <option value="read">Read</option>
-      </select>
-
-      <!-- sort -->
-      <select x-model="sortBy" @change="page=1; load()"
-        class="border rounded-lg px-2 py-1 text-sm bg-white">
-        <option value="title">Title A–Z</option>
-        <option value="author">Author A–Z</option>
-        <option value="date_added">Recently Added</option>
-        <option value="size">Largest First</option>
-        <option value="format">Format</option>
-        <option value="rating">Highest Rated</option>
-      </select>
-
-      <!-- result count -->
-      <span class="ml-auto text-gray-400" x-text="`${total} result${total!==1?'s':''}`"></span>
-    </div>
+  <div class="browser">
+    <nav class="rail" id="rail"></nav>
+    <div class="resizer" data-t="rail"></div>
+    <div class="col" id="c0"><div class="col-head pivotable" data-col="0"><span id="h0">Initial</span><span class="pivot" title="Change grouping (Initial → Format → Author → Year)">▾ group</span></div><div class="col-body" id="b0"></div></div>
+    <div class="resizer" data-t="c0" id="rzc0"></div>
+    <div class="col" id="c1"><div class="col-head pivotable" data-col="1"><span id="h1">Format</span><span class="pivot" title="Change grouping">▾ group</span></div><div class="col-body" id="b1"></div></div>
+    <div class="resizer" data-t="c1" id="rzc1"></div>
+    <div class="col books" id="c2"><div class="col-head" data-col="2"><span id="h2">Books</span><span></span></div><div class="col-body" id="b2"></div></div>
+    <div class="resizer" data-t="preview"></div>
+    <aside class="preview" id="preview"></aside>
   </div>
 
-  <!-- ── Stats panel ── -->
-  <div x-show="showStats" x-cloak @click.self="showStats=false"
-    class="fixed inset-0 bg-black/40 z-30 flex justify-end">
-    <div class="bg-white w-96 shadow-2xl p-6 overflow-y-auto" @click.stop>
-      <div class="flex justify-between items-center mb-4">
-        <h2 class="text-lg font-bold text-gray-800">Library Stats</h2>
-        <button @click="showStats=false" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
-      </div>
-      <div class="grid grid-cols-2 gap-3 mb-5">
-        <div class="bg-indigo-50 rounded-xl p-4 text-center">
-          <div class="text-3xl font-bold text-indigo-600" x-text="stats.total"></div>
-          <div class="text-xs text-gray-500 mt-1">Total books</div>
-        </div>
-        <div class="bg-indigo-50 rounded-xl p-4 text-center">
-          <div class="text-3xl font-bold text-indigo-600" x-text="stats.total_gb + ' GB'"></div>
-          <div class="text-xs text-gray-500 mt-1">Total size</div>
-        </div>
-      </div>
-      <!-- by format -->
-      <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">By Format</h3>
-      <template x-for="row in stats.by_format" :key="row.extension">
-        <div class="flex items-center justify-between py-1 border-b last:border-0">
-          <span class="flex items-center gap-2">
-            <span :class="fmtBadgeClass(row.extension)" class="text-xs px-2 py-0.5 rounded-full font-medium capitalize" x-text="row.extension"></span>
-          </span>
-          <span class="font-semibold text-gray-700" x-text="row.n"></span>
-        </div>
-      </template>
-      <!-- by status -->
-      <h3 class="text-sm font-semibold text-gray-500 uppercase mt-4 mb-2">By Status</h3>
-      <template x-for="[s, n] in Object.entries(stats.by_status ?? {})" :key="s">
-        <div class="flex items-center justify-between py-1 border-b last:border-0">
-          <span class="flex items-center gap-2">
-            <span :class="statusDot(s)" class="inline-block w-3 h-3 rounded-full"></span>
-            <span class="capitalize" x-text="s"></span>
-          </span>
-          <span class="font-semibold text-gray-700" x-text="n"></span>
-        </div>
-      </template>
-      <!-- by category -->
-      <template x-if="stats.by_category && stats.by_category.length > 1">
-        <div>
-          <h3 class="text-sm font-semibold text-gray-500 uppercase mt-4 mb-2">By Category</h3>
-          <template x-for="row in stats.by_category" :key="row.cat">
-            <div class="flex items-center justify-between py-1 border-b last:border-0">
-              <span class="text-gray-700 capitalize" x-text="row.cat"></span>
-              <span class="font-semibold text-gray-700" x-text="row.n"></span>
-            </div>
-          </template>
-        </div>
-      </template>
-    </div>
-  </div>
+  <div class="palbar" id="palbar"><span class="lbl">palette</span></div>
 
-  <!-- ── Main content ── -->
-  <main class="max-w-screen-xl mx-auto px-4 py-5">
+  <footer>
+    <div class="crumb" id="crumb"></div>
+    <div class="hint"><b>↑↓</b> move &nbsp; <b>←→</b> column &nbsp; <b>↵</b> drill &nbsp; <b>⌘K</b> search</div>
+  </footer>
+  <div class="toast" id="toast"></div>
 
-    <!-- loading indicator -->
-    <div x-show="loading" class="flex justify-center py-20">
-      <div class="text-indigo-500 text-lg animate-pulse">Loading books…</div>
-    </div>
-
-    <!-- empty state -->
-    <div x-show="!loading && books.length===0" class="text-center py-20 text-gray-400">
-      <div class="text-5xl mb-3">📭</div>
-      <p class="text-lg">No books found.</p>
-      <p class="text-sm mt-1" x-show="q || fmt || statusFilter">Try clearing the filters.</p>
-      <p class="text-sm mt-1" x-show="!q && !fmt && !statusFilter">
-        Run <code class="bg-gray-100 px-1 rounded">python consolidate.py</code> then <code class="bg-gray-100 px-1 rounded">python scanner.py</code>.
-      </p>
-    </div>
-
-    <!-- book grid -->
-    <div x-show="!loading && books.length>0"
-      class="grid gap-3"
-      style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr))">
-
-      <template x-for="book in books" :key="book.id">
-        <div @click="openDetail(book)"
-          class="book-card bg-white rounded-xl shadow-sm hover:shadow-md cursor-pointer transition-shadow border border-gray-100 p-4 flex flex-col gap-2 relative">
-
-          <!-- format badge -->
-          <span :class="fmtBadgeClass(book.extension)"
-            class="absolute top-3 right-3 text-xs px-2 py-0.5 rounded-full font-semibold uppercase">
-            <span x-text="book.extension"></span>
-          </span>
-
-          <!-- status dot -->
-          <span :class="statusDot(book.read_status)"
-            class="absolute top-3 left-3 inline-block w-2.5 h-2.5 rounded-full"
-            :title="book.read_status"></span>
-
-          <!-- title -->
-          <h3 class="card-title font-semibold text-gray-800 text-sm leading-snug mt-3 line-clamp-2 transition-colors"
-            x-text="book.title || book.filename"></h3>
-
-          <!-- author -->
-          <p class="text-xs text-gray-500 line-clamp-1"
-            x-text="book.authors.length ? book.authors.join(', ') : '—'"></p>
-
-          <!-- tags -->
-          <div class="flex flex-wrap gap-1 mt-auto" x-show="book.tags.length > 0">
-            <template x-for="tag in book.tags.slice(0,3)" :key="tag">
-              <span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5" x-text="tag"></span>
-            </template>
-          </div>
-
-          <!-- bottom row: size + rating -->
-          <div class="flex items-center justify-between mt-1">
-            <span class="text-xs text-gray-400" x-text="fmtSize(book.size_bytes)"></span>
-            <span x-show="book.rating > 0" class="text-xs text-amber-400" x-text="'★'.repeat(book.rating)"></span>
-          </div>
-        </div>
-      </template>
-    </div>
-
-    <!-- pagination -->
-    <div x-show="pages > 1" class="flex justify-center items-center gap-2 mt-8 text-sm">
-      <button @click="page=Math.max(1,page-1); load()" :disabled="page===1"
-        class="px-3 py-1 rounded-lg border disabled:opacity-30 hover:bg-gray-100">← Prev</button>
-
-      <template x-for="p in pageRange()" :key="p">
-        <button v-if="p!=='…'"
-          @click="if(p!=='…'){page=p;load()}"
-          :class="p===page ? 'bg-indigo-600 text-white' : p==='…' ? 'pointer-events-none' : 'hover:bg-gray-100'"
-          class="px-3 py-1 rounded-lg border"
-          x-text="p"></button>
-      </template>
-
-      <button @click="page=Math.min(pages,page+1); load()" :disabled="page===pages"
-        class="px-3 py-1 rounded-lg border disabled:opacity-30 hover:bg-gray-100">Next →</button>
-
-      <span class="text-gray-400 ml-2" x-text="`Page ${page} of ${pages}`"></span>
-    </div>
-  </main>
-
-  <!-- ── Book Detail Panel ── -->
-  <div x-show="selectedBook" x-cloak
-    class="fixed inset-0 z-40 flex"
-    @keydown.escape.window="closeDetail()">
-
-    <!-- backdrop -->
-    <div class="flex-1 bg-black/30" @click="closeDetail()"></div>
-
-    <!-- panel -->
-    <div class="w-full max-w-md bg-white shadow-2xl overflow-y-auto flex flex-col"
-      x-show="selectedBook"
-      x-transition:enter="transition ease-out duration-200"
-      x-transition:enter-start="translate-x-full"
-      x-transition:enter-end="translate-x-0"
-      x-transition:leave="transition ease-in duration-150"
-      x-transition:leave-start="translate-x-0"
-      x-transition:leave-end="translate-x-full">
-
-      <div class="p-5 flex-1" x-data="detailPanel()" x-init="init($el)">
-
-        <!-- header -->
-        <div class="flex items-start justify-between mb-4">
-          <div class="flex items-center gap-2">
-            <span :class="fmtBadgeClass(selectedBook?.extension)"
-              class="text-xs px-2 py-0.5 rounded-full font-semibold uppercase"
-              x-text="selectedBook?.extension"></span>
-            <span class="text-xs text-gray-400" x-text="fmtSize(selectedBook?.size_bytes)"></span>
-            <span class="text-xs text-gray-400" x-text="selectedBook?.modified_date"></span>
-          </div>
-          <button @click="closeDetail()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
-        </div>
-
-        <!-- title (editable) -->
-        <div class="mb-3">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-1">Title</label>
-          <input type="text" x-model="edit.title"
-            class="w-full border-b-2 border-gray-200 focus:border-indigo-400 outline-none py-1 text-lg font-semibold text-gray-800 bg-transparent" />
-        </div>
-
-        <!-- authors (editable) -->
-        <div class="mb-3">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-1">Author(s)</label>
-          <input type="text" :value="edit.authors.join(', ')"
-            @input="edit.authors = $event.target.value.split(',').map(s=>s.trim()).filter(Boolean)"
-            placeholder="Author One, Author Two"
-            class="w-full border-b-2 border-gray-200 focus:border-indigo-400 outline-none py-1 text-sm text-gray-700 bg-transparent" />
-        </div>
-
-        <!-- category -->
-        <div class="mb-3">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-1">Category</label>
-          <input type="text" x-model="edit.category" placeholder="e.g. tech, psychology, fiction…"
-            class="w-full border-b-2 border-gray-200 focus:border-indigo-400 outline-none py-1 text-sm text-gray-700 bg-transparent" />
-        </div>
-
-        <!-- tags -->
-        <div class="mb-3">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-1">Tags</label>
-          <input type="text" :value="edit.tags.join(', ')"
-            @input="edit.tags = $event.target.value.split(',').map(s=>s.trim()).filter(Boolean)"
-            placeholder="ai, python, coaching…"
-            class="w-full border-b-2 border-gray-200 focus:border-indigo-400 outline-none py-1 text-sm text-gray-700 bg-transparent" />
-          <div class="flex flex-wrap gap-1 mt-1" x-show="edit.tags.length">
-            <template x-for="tag in edit.tags" :key="tag">
-              <span class="text-xs bg-indigo-50 text-indigo-600 rounded-full px-2 py-0.5" x-text="tag"></span>
-            </template>
-          </div>
-        </div>
-
-        <div class="border-t border-gray-100 my-4"></div>
-
-        <!-- read status -->
-        <div class="mb-3">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-2">Status</label>
-          <div class="flex gap-2">
-            <template x-for="s in ['unread','reading','read']" :key="s">
-              <button @click="edit.read_status=s"
-                :class="edit.read_status===s ? statusActive(s) : 'bg-gray-100 text-gray-600'"
-                class="flex-1 py-1.5 rounded-lg text-sm font-medium capitalize transition">
-                <span x-text="s"></span>
-              </button>
-            </template>
-          </div>
-        </div>
-
-        <!-- rating -->
-        <div class="mb-4">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-2">Rating</label>
-          <div class="flex gap-1">
-            <template x-for="n in [1,2,3,4,5]" :key="n">
-              <button @click="edit.rating = edit.rating===n ? 0 : n"
-                :class="n <= edit.rating ? 'text-amber-400' : 'text-gray-200'"
-                class="star text-3xl leading-none">★</button>
-            </template>
-          </div>
-        </div>
-
-        <!-- notes -->
-        <div class="mb-4">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-1">Notes</label>
-          <textarea x-model="edit.notes" rows="3" placeholder="Your notes…"
-            class="w-full border border-gray-200 rounded-lg p-2 text-sm text-gray-700 focus:outline-none focus:border-indigo-300 resize-none"></textarea>
-        </div>
-
-        <!-- filename (read-only) -->
-        <div class="mb-4">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-1">File</label>
-          <p class="text-xs text-gray-400 break-all font-mono" x-text="selectedBook?.filename"></p>
-        </div>
-
-        <!-- source path -->
-        <div class="mb-4" x-show="selectedBook?.source_path">
-          <label class="text-xs font-semibold text-gray-400 uppercase block mb-1">Original Source</label>
-          <p class="text-xs text-gray-400 break-all" x-text="selectedBook?.source_path"></p>
-        </div>
-      </div>
-
-      <!-- sticky bottom actions -->
-      <div class="sticky bottom-0 bg-white border-t border-gray-100 p-4 flex gap-3">
-        <button @click="openBook()"
-          class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl font-semibold text-sm transition">
-          Open Book
-        </button>
-        <button @click="saveBook()"
-          :class="saved ? 'bg-green-500' : 'bg-gray-800 hover:bg-gray-700'"
-          class="flex-1 text-white py-2.5 rounded-xl font-semibold text-sm transition">
-          <span x-text="saved ? '✓ Saved' : 'Save Changes'"></span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Toast ── -->
-  <div x-show="toast" x-cloak x-transition
-    class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-sm px-5 py-2.5 rounded-full shadow-lg z-50"
-    x-text="toast"></div>
-
-  <script>
-  function bookshelf() {
-    return {
-      books: [], total: 0, pages: 1, page: 1,
-      q: '', fmt: '', statusFilter: '', sortBy: 'title',
-      loading: false,
-      selectedBook: null,
-      showStats: false,
-      stats: {},
-      toast: '',
-
-      async init() {
-        await this.load();
-        await this.loadStats();
-      },
-
-      async load() {
-        this.loading = true;
-        const p = new URLSearchParams({
-          q: this.q, format: this.fmt, status: this.statusFilter,
-          sort: this.sortBy, page: this.page, per_page: 60,
-        });
-        const res = await fetch(`/api/books?${p}`);
-        const data = await res.json();
-        this.books = data.books;
-        this.total = data.total;
-        this.pages = data.pages;
-        this.loading = false;
-      },
-
-      async loadStats() {
-        const res = await fetch('/api/stats');
-        this.stats = await res.json();
-      },
-
-      openDetail(book) {
-        this.selectedBook = book;
-      },
-
-      closeDetail() {
-        this.selectedBook = null;
-      },
-
-      async rescan() {
-        this.showToast('Scanning…');
-        const res = await fetch('/api/scan', { method: 'POST' });
-        const data = await res.json();
-        this.showToast(`Done: ${data.added} added, ${data.updated} updated`);
-        await this.load();
-        await this.loadStats();
-      },
-
-      pageRange() {
-        const p = this.page, total = this.pages;
-        if (total <= 7) return Array.from({length: total}, (_, i) => i+1);
-        const pages = [1];
-        if (p > 3) pages.push('…');
-        for (let i = Math.max(2, p-1); i <= Math.min(total-1, p+1); i++) pages.push(i);
-        if (p < total - 2) pages.push('…');
-        pages.push(total);
-        return pages;
-      },
-
-      fmtSize(bytes) {
-        if (!bytes) return '';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
-        return (bytes / 1024 / 1024).toFixed(1) + ' MB';
-      },
-
-      fmtBadgeClass(ext) {
-        const map = {
-          pdf: 'bg-red-100 text-red-700',
-          epub: 'bg-emerald-100 text-emerald-700',
-          mobi: 'bg-sky-100 text-sky-700',
-          azw3: 'bg-sky-100 text-sky-700',
-          azw:  'bg-sky-100 text-sky-700',
-          djvu: 'bg-orange-100 text-orange-700',
-          cbz:  'bg-purple-100 text-purple-700',
-          cbr:  'bg-purple-100 text-purple-700',
-        };
-        return map[ext] || 'bg-gray-100 text-gray-600';
-      },
-
-      statusDot(s) {
-        return {unread: 'bg-gray-300', reading: 'bg-amber-400', read: 'bg-green-400'}[s] || 'bg-gray-200';
-      },
-
-      showToast(msg, ms=2500) {
-        this.toast = msg;
-        setTimeout(() => this.toast = '', ms);
-      },
-    };
+<script>
+  const PALETTES = {
+    paper:    { name:"Paper",      bg:"#F7F4EE", panel:"#FFFFFF", rail:"#EFEAE0", border:"#E3DCCE", text:"#1C1A17", muted:"#6E665A", faint:"#A2988A", accent:"#C8862B", soft:"#F2E2C2", ink:"#4A2F00", keep:"#5FA463" },
+    finder:   { name:"Finder",     bg:"#F1F2F4", panel:"#FFFFFF", rail:"#E8EAEE", border:"#DCDFE5", text:"#191B1F", muted:"#6B7280", faint:"#9CA3AE", accent:"#2F6BE0", soft:"#E0EAFB", ink:"#11296B", keep:"#16A34A" },
+    ice:      { name:"Ice",        bg:"#E8EFFA", panel:"#F6F9FE", rail:"#DCE7F6", border:"#C7D8EF", text:"#15202F", muted:"#59697F", faint:"#8A9AB1", accent:"#2563EB", soft:"#D6E4FB", ink:"#0E2A66", keep:"#1E9E6A" },
+    graphite: { name:"Graphite",   bg:"#ECEDF0", panel:"#FAFAFB", rail:"#E3E4E8", border:"#D5D7DD", text:"#1A1C20", muted:"#686D76", faint:"#9A9FA8", accent:"#0F8C8C", soft:"#D4EEEE", ink:"#064040", keep:"#16A34A" },
+    sage:     { name:"Sage",       bg:"#EDF1EB", panel:"#FBFCFA", rail:"#E4E9E0", border:"#D6DCCF", text:"#1A1F18", muted:"#66705C", faint:"#97A089", accent:"#3E7D52", soft:"#DCEDE0", ink:"#123018", keep:"#3E7D52" },
+    night:    { name:"Night",      bg:"#1A1815", panel:"#211E1A", rail:"#161410", border:"#322D26", text:"#ECE6DA", muted:"#A99E8B", faint:"#6E6557", accent:"#E0A03C", soft:"#4A3A1C", ink:"#FBE9C6", keep:"#7CB87F" },
+  };
+  function applyPalette(key) {
+    const p = PALETTES[key] || PALETTES.paper; const r = document.documentElement.style;
+    r.setProperty('--bg',p.bg); r.setProperty('--panel',p.panel); r.setProperty('--rail',p.rail);
+    r.setProperty('--border',p.border); r.setProperty('--text',p.text); r.setProperty('--muted',p.muted);
+    r.setProperty('--faint',p.faint); r.setProperty('--accent',p.accent); r.setProperty('--accent-soft',p.soft);
+    r.setProperty('--accent-ink',p.ink); r.setProperty('--keep',p.keep);
+    st.palette = key; try { localStorage.setItem('bookshelf-palette', key); } catch(e){}
+    renderPalbar();
+  }
+  function renderPalbar() {
+    const bar = document.getElementById('palbar');
+    bar.querySelectorAll('.swatch').forEach(n=>n.remove());
+    Object.entries(PALETTES).forEach(([key,p]) => {
+      const b = document.createElement('button');
+      b.className = 'swatch' + (key===st.palette ? ' on':'');
+      b.innerHTML = `<span class="chip" style="background:${p.bg}"><i style="background:${p.accent}"></i></span>${p.name}`;
+      b.onclick = () => applyPalette(key);
+      bar.appendChild(b);
+    });
   }
 
-  function detailPanel() {
-    return {
-      edit: {},
-      saved: false,
+  // facets available as pivotable columns (only those with real signal today)
+  const PIVOTS = ["initial","format","author","year"];
+  const facetLabel = { initial:"Initial", format:"Format", author:"Author", year:"Year", status:"Status", category:"Category" };
 
-      init() {
-        this.$watch('selectedBook', book => {
-          if (book) {
-            this.edit = {
-              title:       book.title || '',
-              authors:     [...(book.authors || [])],
-              category:    book.category || '',
-              tags:        [...(book.tags || [])],
-              read_status: book.read_status || 'unread',
-              rating:      book.rating || 0,
-              notes:       book.notes || '',
-            };
-            this.saved = false;
-          }
-        });
-      },
+  // rail scopes -> base filter merged into every request
+  const RAIL = [{ grp:"Library", items:[
+    { ic:"▦", lbl:"All Books", base:{} },
+    { ic:"▦", lbl:"PDFs", base:{format:"pdf"} },
+    { ic:"▦", lbl:"EPUBs", base:{format:"epub"} },
+  ]}];
 
-      async saveBook() {
-        const res = await fetch(`/api/books/${selectedBook.id}`, {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(this.edit),
-        });
-        const updated = await res.json();
-        // update in books list
-        const idx = bookshelf().books.findIndex(b => b.id === updated.id);
-        if (idx >= 0) bookshelf().books[idx] = updated;
-        Object.assign(selectedBook, updated);
-        this.saved = true;
-        setTimeout(() => this.saved = false, 2000);
-      },
+  const st = {
+    query:"", base:{}, railLbl:"All Books",
+    facet:["initial","format"], selVal:[null,null], bookIdx:0, focus:2,
+    g0:[], g1:[], books:[], total:0, palette:"paper",
+  };
 
-      async openBook() {
-        const res = await fetch(`/api/open/${selectedBook.id}`, { method: 'POST' });
-        if (!res.ok) {
-          const d = await res.json();
-          bookshelf().showToast('Cannot open: ' + (d.detail || 'file not on disk'));
-        }
-      },
+  const qs = (o) => Object.entries(o).filter(([,v])=>v!==null&&v!==undefined&&v!=="").map(([k,v])=>`${k}=${encodeURIComponent(v)}`).join("&");
+  async function getFacets(facet, filters) { const r = await fetch(`/api/facets?facet=${facet}&${qs(filters)}`); return (await r.json()).groups; }
+  async function getBooks(filters) { const r = await fetch(`/api/column-books?per_page=1000&${qs({...filters})}`); return await r.json(); }
+  async function getTotal() { const r = await fetch(`/api/column-books?per_page=1&${qs({...st.base, q:st.query})}`); return (await r.json()).total; }
 
-      statusActive(s) {
-        return {
-          unread:  'bg-gray-400 text-white',
-          reading: 'bg-amber-400 text-white',
-          read:    'bg-green-500 text-white',
-        }[s];
-      },
+  function baseF() { return { ...st.base, q: st.query }; }
 
-      fmtBadgeClass: bookshelf().fmtBadgeClass,
-      fmtSize: bookshelf().fmtSize,
-    };
+  async function reloadFrom(level) {
+    // search mode: collapse to a single results column, no facet browsing
+    if (st.query.trim()) {
+      const res = await getBooks({ ...st.base, q: st.query });
+      st.books = res.books; if (st.bookIdx >= st.books.length) st.bookIdx = 0;
+      st.focus = 2;
+      render();
+      getTotal().then(t => { st.total = t; renderTrust(); });
+      return;
+    }
+    // level 0: reload col0 groups; 1: reload col1; 2: reload books
+    if (level <= 0) {
+      st.g0 = await getFacets(st.facet[0], baseF());
+      if (!st.g0.find(g => String(g.value)===String(st.selVal[0]))) st.selVal[0] = st.g0.length ? st.g0[0].value : null;
+    }
+    if (level <= 1) {
+      const f1 = { ...baseF(), [st.facet[0]]: st.selVal[0] };
+      st.g1 = await getFacets(st.facet[1], f1);
+      if (!st.g1.find(g => String(g.value)===String(st.selVal[1]))) st.selVal[1] = st.g1.length ? st.g1[0].value : null;
+    }
+    const fb = { ...baseF(), [st.facet[0]]: st.selVal[0], [st.facet[1]]: st.selVal[1] };
+    const res = await getBooks(fb);
+    st.books = res.books; if (st.bookIdx >= st.books.length) st.bookIdx = 0;
+    render();
+    getTotal().then(t => { st.total = t; renderTrust(); });
   }
-  </script>
+
+  function render() {
+    // rail
+    const rail = document.getElementById('rail'); rail.innerHTML='';
+    RAIL.forEach(sec => {
+      const h = document.createElement('div'); h.className='grp'; h.textContent=sec.grp; rail.appendChild(h);
+      sec.items.forEach(it => {
+        const d = document.createElement('div'); d.className='item'+(it.lbl===st.railLbl?' active':'');
+        d.innerHTML = `<span class="ic">${it.ic}</span><span class="lbl">${it.lbl}</span>`;
+        d.onclick = () => { st.base = {...it.base}; st.railLbl = it.lbl; st.selVal=[null,null]; st.bookIdx=0; reloadFrom(0); };
+        rail.appendChild(d);
+      });
+      const note = document.createElement('div'); note.className='item disabled';
+      note.innerHTML = `<span class="ic">⌘</span><span class="lbl">Topics · after tagging</span>`;
+      note.title = "Topic/Subtopic facets light up once the Daftar enrichment pass tags your books.";
+      rail.appendChild(note);
+    });
+    // headers
+    document.getElementById('h0').textContent = facetLabel[st.facet[0]];
+    document.getElementById('h1').textContent = facetLabel[st.facet[1]];
+    document.getElementById('h2').textContent = `Books · ${st.books.length}`;
+    fillFolder('b0', 0, st.g0); fillFolder('b1', 1, st.g1);
+    // books leaf
+    const b2 = document.getElementById('b2'); b2.innerHTML='';
+    if (!st.books.length) b2.innerHTML = '<div class="empty">no books here</div>';
+    st.books.forEach((bk,i) => {
+      const r = document.createElement('div'); r.className='row'+(i===st.bookIdx?' sel':'');
+      const rtl = /[؀-ۿ]/.test(bk.title||'');
+      r.innerHTML = `<span class="name" ${rtl?'dir="rtl"':''}>${esc(bk.title || bk.filename)}</span><span class="ext">${bk.extension}</span>`;
+      r.onclick = () => { st.bookIdx=i; st.focus=2; render(); };
+      r.ondblclick = () => openBook(bk);
+      b2.appendChild(r);
+    });
+    // search mode hides the two facet columns + their resizers
+    const searchMode = !!st.query.trim();
+    ['c0','c1','rzc0','rzc1'].forEach(id => document.getElementById(id).classList.toggle('hidden', searchMode));
+    [0,1,2].forEach(c => document.getElementById('c'+c).classList.toggle('focused', st.focus===c));
+    renderPreview(st.books[st.bookIdx]); renderCrumb();
+    scrollSel();
+  }
+  function fillFolder(bodyId, col, groups) {
+    const body = document.getElementById(bodyId); body.innerHTML='';
+    if (!groups.length) { body.innerHTML='<div class="empty">—</div>'; return; }
+    groups.forEach(g => {
+      const r = document.createElement('div');
+      const on = String(g.value)===String(st.selVal[col]);
+      r.className = 'row'+(on?' sel':'');
+      const rtl = /[؀-ۿ]/.test(String(g.value));
+      r.innerHTML = `<span class="name" ${rtl?'dir="rtl"':''}>${esc(g.value)}</span><span class="ct">${g.count}</span><span class="chev">›</span>`;
+      r.onclick = () => {
+        st.selVal[col] = g.value; st.focus = col;
+        if (col===0) { st.selVal[1]=null; st.bookIdx=0; reloadFrom(1); }
+        else { st.bookIdx=0; reloadFrom(2); }
+      };
+      body.appendChild(r);
+    });
+  }
+  function renderPreview(bk) {
+    const p = document.getElementById('preview');
+    if (!bk) { p.innerHTML='<div class="empty">Nothing selected</div>'; return; }
+    const rtl = /[؀-ۿ]/.test(bk.title||'');
+    const authors = (bk.authors||[]).join(', ') || '—';
+    const tags = (bk.tags||[]);
+    const origins = (bk.origin_paths||[]);
+    const view = bk.extension === 'pdf'
+      ? `<iframe class="pdfview" src="/api/file/${bk.id}#toolbar=0&navpanes=0&view=FitH" title="preview"></iframe>`
+      : `<div class="noview">no inline preview · ${(bk.extension||'').toUpperCase()}</div>`;
+    const originBlock = origins.length ? `
+      <div class="origin">
+        <div class="ohdr"><span>original location${origins.length>1?'s':''}</span>${origins.length>1?`<span class="badge">${origins.length} copies</span>`:''}</div>
+        ${origins.map(o=>`<div class="opath">${esc(o)}</div>`).join('')}
+      </div>` : '';
+    p.innerHTML = `
+      ${view}
+      <div><h1 ${rtl?'dir="rtl"':''}>${esc(bk.title || bk.filename)}</h1><div class="author">${esc(authors)}</div></div>
+      <div class="meta">
+        <div class="pair"><span class="k">format</span><span class="v">${(bk.extension||'').toUpperCase()}</span></div>
+        <div class="pair"><span class="k">size</span><span class="v">${fmtSize(bk.size_bytes)}</span></div>
+        <div class="pair"><span class="k">modified</span><span class="v">${bk.modified_date||'—'}</span></div>
+        <div class="pair"><span class="k">status</span><span class="v">${bk.read_status||'unread'}</span></div>
+        <div class="pair"><span class="k">file</span><span class="v">${esc(bk.filename||'')}</span></div>
+      </div>
+      ${tags.length?`<div class="tags">${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>`:''}
+      ${originBlock}
+      <div class="pv-actions"><div class="btn primary" id="pvOpen">Open</div></div>`;
+    const o = document.getElementById('pvOpen'); if (o) o.onclick = () => openBook(bk);
+  }
+  function renderCrumb() {
+    const c = document.getElementById('crumb');
+    const bk = st.books[st.bookIdx];
+    const leaf = bk ? `<span class="sep">/</span><span class="leaf">${esc(bk.filename||bk.title)}</span>` : '';
+    if (st.query.trim()) {
+      c.innerHTML = `Search “${esc(st.query.trim())}” · ${st.books.length} result${st.books.length!==1?'s':''}` + leaf;
+      return;
+    }
+    c.innerHTML = `${esc(st.railLbl)}<span class="sep">/</span>${esc(st.selVal[0]??'—')}<span class="sep">/</span>${esc(st.selVal[1]??'—')}` + leaf;
+  }
+  function renderTrust() {
+    document.getElementById('trust').textContent = st.query
+      ? `${st.total} match` : `${st.total || '…'} books · all accounted for`;
+  }
+
+  function pivot(col) {
+    const other = st.facet[1-col];
+    const pool = PIVOTS.filter(f => f !== other);
+    st.facet[col] = pool[(pool.indexOf(st.facet[col])+1) % pool.length];
+    st.selVal[col] = null; if (col===0) st.selVal[1]=null; st.bookIdx=0;
+    reloadFrom(col);
+  }
+  document.querySelectorAll('.col-head.pivotable').forEach(h => { const c=+h.dataset.col; h.onclick=()=>pivot(c); });
+
+  async function openBook(bk) {
+    if (!bk) return;
+    const r = await fetch(`/api/open/${bk.id}`, { method:'POST' });
+    if (!r.ok) { const d = await r.json().catch(()=>({})); toast('Cannot open: ' + (d.detail||'file missing')); }
+    else toast('Opening ' + (bk.title||bk.filename));
+  }
+
+  // keyboard
+  function curLen(c) { return [st.g0.length, st.g1.length, st.books.length][c]; }
+  function curIdx(c) {
+    if (c===2) return st.bookIdx;
+    const groups = c===0 ? st.g0 : st.g1;
+    const i = groups.findIndex(g => String(g.value)===String(st.selVal[c]));
+    return i<0 ? 0 : i;
+  }
+  function selectAt(c, idx) {
+    idx = Math.max(0, Math.min(curLen(c)-1, idx));
+    if (c===2) { st.bookIdx = idx; render(); return; }
+    const groups = c===0 ? st.g0 : st.g1;
+    if (!groups[idx]) return;
+    st.selVal[c] = groups[idx].value;
+    if (c===0) { st.selVal[1]=null; st.bookIdx=0; reloadFrom(1); }
+    else { st.bookIdx=0; reloadFrom(2); }
+  }
+  document.addEventListener('keydown', e => {
+    if (e.target.id === 'q') { if (e.key==='Escape') e.target.blur(); return; }
+    if ((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k') { document.getElementById('q').focus(); e.preventDefault(); return; }
+    const c = st.focus;
+    if (e.key==='ArrowDown') { selectAt(c, curIdx(c)+1); e.preventDefault(); }
+    else if (e.key==='ArrowUp') { selectAt(c, curIdx(c)-1); e.preventDefault(); }
+    else if (e.key==='ArrowLeft') { st.focus=Math.max(0,c-1); render(); e.preventDefault(); }
+    else if (e.key==='ArrowRight') { st.focus=Math.min(2,c+1); render(); e.preventDefault(); }
+    else if (e.key==='Enter') { if (c<2) { st.focus=c+1; render(); } else openBook(st.books[st.bookIdx]); e.preventDefault(); }
+  });
+
+  let qTimer;
+  document.getElementById('q').addEventListener('input', e => {
+    clearTimeout(qTimer);
+    st.query = e.target.value;
+    qTimer = setTimeout(() => { st.selVal=[null,null]; st.bookIdx=0; reloadFrom(0); }, 250);
+  });
+
+  function scrollSel() {
+    ['b0','b1','b2'].forEach((id,c) => {
+      const idx = c===2 ? st.bookIdx : curIdx(c);
+      const el = document.getElementById(id).children[idx];
+      if (el && st.focus===c) el.scrollIntoView({block:'nearest'});
+    });
+  }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m])); }
+  function fmtSize(b){ if(!b) return '—'; return b<1048576 ? (b/1024).toFixed(0)+' KB' : (b/1048576).toFixed(1)+' MB'; }
+  let tTimer;
+  function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(tTimer); tTimer=setTimeout(()=>t.classList.remove('show'),2200); }
+
+  // ── resizable columns ──
+  const RZ_TARGETS = { rail:'rail', c0:'c0', c1:'c1', preview:'preview' };
+  function saveWidths() {
+    const w = {};
+    Object.values(RZ_TARGETS).forEach(id => { const el=document.getElementById(id); if (el) w[id]=Math.round(el.getBoundingClientRect().width); });
+    try { localStorage.setItem('bookshelf-widths', JSON.stringify(w)); } catch(e){}
+  }
+  function loadWidths() {
+    let w; try { w = JSON.parse(localStorage.getItem('bookshelf-widths')||'{}'); } catch(e){ w={}; }
+    Object.entries(w).forEach(([id,px]) => { const el=document.getElementById(id); if (el && px) el.style.width = px+'px'; });
+  }
+  function makeResizer(rz) {
+    const target = document.getElementById(RZ_TARGETS[rz.dataset.t]);
+    const dir = rz.dataset.t === 'preview' ? -1 : 1;
+    rz.addEventListener('mousedown', e => {
+      e.preventDefault(); rz.classList.add('dragging'); document.body.style.userSelect='none';
+      const startX = e.clientX, startW = target.getBoundingClientRect().width;
+      const minW = parseInt(getComputedStyle(target).minWidth) || 90;
+      const move = ev => { target.style.width = Math.max(minW, startW + dir*(ev.clientX-startX)) + 'px'; };
+      const up = () => { document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); rz.classList.remove('dragging'); document.body.style.userSelect=''; saveWidths(); };
+      document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+    });
+  }
+  document.querySelectorAll('.resizer').forEach(makeResizer);
+
+  // boot
+  loadWidths();
+  applyPalette((()=>{ try { return localStorage.getItem('bookshelf-palette')||'paper'; } catch(e){ return 'paper'; } })());
+  reloadFrom(0);
+</script>
 </body>
 </html>
