@@ -1,5 +1,11 @@
 # BookShelf — Agent Context
 
+## Design system
+Always read `DESIGN.md` before making any visual or UI decision (layout, fonts, color,
+spacing, motion). The interactive UI reference is `.context/design/preview.html`.
+BookShelf is the **books connector for Daftar** (`~/DevProjects/daftar`) — keep the two
+a coherent family.
+
 ## What this app is
 Personal book library web app. ~3,937 books consolidated from scattered Mac locations
 (Downloads, Dropbox, iCloud, Google Drive, DevProjects) into a single flat folder.
