@@ -52,6 +52,24 @@ def parse_filename(filename: str) -> tuple[str, list[str]]:
 
 # ── folder scanner ────────────────────────────────────────────────────────────
 
+def is_book_path(path: Path) -> bool:
+    """Return true for regular book files and macOS package-style EPUB dirs."""
+    if path.suffix.lower() not in BOOK_EXTS:
+        return False
+    return path.is_file() or (path.suffix.lower() == ".epub" and path.is_dir())
+
+
+def book_size(path: Path) -> int:
+    """Return byte size for files and recursive size for package directories."""
+    if path.is_file():
+        return path.stat().st_size
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            total += child.stat().st_size
+    return total
+
+
 def scan_folder(books_dir: Path = BOOKS_DIR, db_path: Path = DB_PATH) -> tuple[int, int]:
     """Walk books_dir, upsert every book file into the DB. Returns (added, updated)."""
     init_db(db_path)
@@ -62,9 +80,7 @@ def scan_folder(books_dir: Path = BOOKS_DIR, db_path: Path = DB_PATH) -> tuple[i
         existing = {r[0] for r in c.execute("SELECT filename FROM books")}
 
     for path in books_dir.iterdir():
-        if not path.is_file():
-            continue
-        if path.suffix.lower() not in BOOK_EXTS:
+        if not is_book_path(path):
             continue
 
         stat  = path.stat()
@@ -74,7 +90,7 @@ def scan_folder(books_dir: Path = BOOKS_DIR, db_path: Path = DB_PATH) -> tuple[i
             "title":         title,
             "authors":       authors,
             "extension":     path.suffix.lower().lstrip("."),
-            "size_bytes":    stat.st_size,
+            "size_bytes":    book_size(path),
             "modified_date": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d"),
             "source_path":   str(path),
         }
